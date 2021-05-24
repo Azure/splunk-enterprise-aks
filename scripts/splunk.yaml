@@ -1,0 +1,234 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: splunk
+---
+apiVersion: enterprise.splunk.com/v1
+kind: ClusterMaster
+metadata:
+  name: cm
+  namespace: splunk
+  finalizers:
+  - enterprise.splunk.com/delete-pvc
+spec:
+  resources:
+    requests:
+      memory: "12Gi"
+      cpu: "12"
+    limits:
+      memory: "12Gi"
+      cpu: "12"
+  defaults: |-
+    splunk:
+      site: site1
+      multisite_master: localhost
+      all_sites: site1,site2,site3
+      multisite_replication_factor_origin: 1
+      multisite_replication_factor_total: 3
+      multisite_search_factor_origin: 1
+      multisite_search_factor_total: 3
+      idxc:
+        search_factor: 3
+        replication_factor: 3
+  licenseMasterRef:
+    name: lm
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: agentpool
+            operator: In
+            values:
+            - splunk
+  smartstore:
+    defaults:
+      volumeName: s3
+    volumes:
+      - name: s3
+        path: smartstore/remote_volume
+        endpoint: http://minio.minio.svc.cluster.local:9000
+        secretRef: s2keys
+---
+apiVersion: enterprise.splunk.com/v1
+kind: IndexerCluster
+metadata:
+  name: indexer-site1
+  namespace: splunk
+  finalizers:
+  - enterprise.splunk.com/delete-pvc
+spec:
+  resources:
+    requests:
+      memory: "12Gi"
+      cpu: "12"
+    limits:
+      memory: "12Gi"
+      cpu: "12"
+  defaults: |-
+    splunk:
+      multisite_master: splunk-cm-cluster-master-service
+      site: site1
+  clusterMasterRef:
+    name: cm
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: agentpool
+            operator: In
+            values:
+            - splunk
+          - key: topology.kubernetes.io/zone
+            operator: In
+            values:
+            - {region}-1
+---
+apiVersion: enterprise.splunk.com/v1
+kind: IndexerCluster
+metadata:
+  name: indexer-site2
+  namespace: splunk
+  finalizers:
+  - enterprise.splunk.com/delete-pvc
+spec:
+  resources:
+    requests:
+      memory: "12Gi"
+      cpu: "12"
+    limits:
+      memory: "12Gi"
+      cpu: "12"
+  defaults: |-
+    splunk:
+      multisite_master: splunk-cm-cluster-master-service
+      site: site2
+  clusterMasterRef:
+    name: cm
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: agentpool
+            operator: In
+            values:
+            - splunk
+          - key: topology.kubernetes.io/zone
+            operator: In
+            values:
+            - {region}-2
+---
+apiVersion: enterprise.splunk.com/v1
+kind: IndexerCluster
+metadata:
+  name: indexer-site3
+  namespace: splunk
+  finalizers:
+  - enterprise.splunk.com/delete-pvc
+spec:
+  resources:
+    requests:
+      memory: "12Gi"
+      cpu: "12"
+    limits:
+      memory: "12Gi"
+      cpu: "12"
+  defaults: |-
+    splunk:
+      multisite_master: splunk-cm-cluster-master-service
+      site: site3
+  clusterMasterRef:
+    name: cm
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: agentpool
+            operator: In
+            values:
+            - splunk
+          - key: topology.kubernetes.io/zone
+            operator: In
+            values:
+            - {region}-3
+---
+apiVersion: enterprise.splunk.com/v1
+kind: SearchHeadCluster
+metadata:
+  name: search
+  namespace: splunk
+  finalizers:
+  - enterprise.splunk.com/delete-pvc
+spec:
+  resources:
+    requests:
+      memory: "12Gi"
+      cpu: "12"
+    limits:
+      memory: "12Gi"
+      cpu: "12"
+  defaults: |-
+    splunk:
+      multisite_master: splunk-cm-cluster-master-service
+      site: site0
+  clusterMasterRef:
+    name: cm
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: agentpool
+            operator: In
+            values:
+            - splunk
+---
+apiVersion: enterprise.splunk.com/v1
+kind: LicenseMaster
+metadata:
+  name: lm
+  namespace: splunk
+  finalizers:
+  - enterprise.splunk.com/delete-pvc
+spec:
+  resources:
+    requests:
+      memory: "12Gi"
+      cpu: "12"
+    limits:
+      memory: "12Gi"
+      cpu: "12"
+  clusterMasterRef:
+    name: cm
+  volumes:
+    - name: licenses
+      configMap:
+        name: splunk-licenses
+  licenseUrl: /mnt/licenses/Splunk.License
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: agentpool
+            operator: In
+            values:
+            - splunk
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: monitoringconsole
+  namespace: splunk
+  annotations:
+    kubernetes.io/ingress.class: azure/application-gateway
+spec:
+  rules:
+  - http:
+      paths:
+      - backend:
+          serviceName: splunk-splunk-monitoring-console-service
+          servicePort: 8000

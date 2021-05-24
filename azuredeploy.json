@@ -1,0 +1,540 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "defaultValue": "[resourceGroup().location]",
+      "type": "string",
+      "metadata": {
+        "description": "Location of all resources to be deployed"
+      }
+    },
+    "virtualNetworkAddressPrefix": {
+      "defaultValue": [ "10.0.0.0/8" ],
+      "type": "array",
+      "metadata": {
+        "description": "VNET address space."
+      }
+    },
+    "aksSubnetAddressPrefix": {
+      "defaultValue": "10.0.0.0/16",
+      "type": "string",
+      "metadata": {
+        "description": "Subnet address space."
+      }
+    },
+    "appGwSubnetAddressPrefix": {
+      "defaultValue": "10.1.0.0/24",
+      "type": "string",
+      "metadata": {
+        "description": "App GW subnet address space."
+      }
+    },
+    "minioVmSku": {
+      "type": "string",
+      "defaultValue": "Standard_D16ds_v4",
+      "metadata": {
+        "description": "VM SKU for AKS user node pool"
+      }
+    },
+    "minioNodecount": {
+      "type": "int",
+      "defaultValue": 4,
+      "metadata": {
+        "description": "Initial node count for AKS user node pool"
+      }
+    },
+    "minioMinCount": {
+      "type": "int",
+      "defaultValue": 4,
+      "metadata": {
+        "description": "Min count for AKS user node pool autoscaling"
+      }
+    },
+    "minioMaxCount": {
+      "type": "int",
+      "defaultValue": 50,
+      "metadata": {
+        "description": "Max count for AKS user node pool autoscaling"
+      }
+    },
+    "splunkVmSku": {
+      "type": "string",
+      "defaultValue": "Standard_D32ds_v4",
+      "metadata": {
+        "description": "VM SKU for AKS user node pool"
+      }
+    },
+    "splunkNodecount": {
+      "type": "int",
+      "defaultValue": 5,
+      "metadata": {
+        "description": "Initial node count for AKS user node pool"
+      }
+    },
+    "splunkMinCount": {
+      "type": "int",
+      "defaultValue": 5,
+      "metadata": {
+        "description": "Min count for AKS user node pool autoscaling"
+      }
+    },
+    "splunkMaxCount": {
+      "type": "int",
+      "defaultValue": 50,
+      "metadata": {
+        "description": "Max count for AKS user node pool autoscaling"
+      }
+    },
+    "linuxSSHKey": {
+      "type": "string",
+      "metadata": {
+        "description": "Public key for SSH authentication"
+      }
+    },
+    "adminUsername": {
+      "type": "string",
+      "metadata": {
+        "description": "Linux admin username for AKS cluster nodes"
+      }
+    },
+    "_artifactsLocation": {
+      "type": "string",
+      "metadata": {
+        "description": "The base URI where artifacts required by this template are located"
+      },
+      "defaultValue": "https://raw.githubusercontent.com/azure/splunk-enterprise-aks/main/"
+    },
+    "_artifactsLocationSasToken": {
+      "type": "securestring",
+      "metadata": {
+        "description": "The sasToken required to access artifacts"
+      },
+      "defaultValue": ""
+    },
+    "utcValue": {
+      "type": "string",
+      "defaultValue": "[utcNow()]"
+    },
+    "licenseFile": {
+      "type": "string",
+      "metadata": {
+        "description": "Splunk Enterprise license file"
+      }
+    },
+    "splunkOperatorUrl": {
+      "type": "string",
+      "defaultValue": "https://raw.githubusercontent.com/azure/splunk-enterprise-aks/main/scripts/splunk-operator-cluster.yaml",
+      "metadata": {
+        "description": "Splunk Operator install yaml"
+      }
+    }
+  },
+  "functions": [],
+  "variables": {
+    "vnetName": "splunk-vnet",
+    "clusterName": "splunk-cluster",
+    "resgpguid": "[substring(replace(guid(resourceGroup().id), '-', ''), 0, 4)]",
+    "splunkInstallScriptUri": "[uri(parameters('_artifactsLocation'), concat('scripts/splunk.sh', parameters('_artifactsLocationSasToken')))]",
+    "minioInstallScriptUri": "[uri(parameters('_artifactsLocation'), concat('scripts/minio.sh', parameters('_artifactsLocationSasToken')))]",
+    "helmValuesUri": "[uri(parameters('_artifactsLocation'), concat('scripts/values.yaml', parameters('_artifactsLocationSasToken')))]",
+    "blobStorageAccountName": "[concat('minio', variables('resgpguid'))]",
+    "blobStorageAccountPrivateEndpointName": "[concat('minio', variables('resgpguid'))]",
+    "blobStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('blobStorageAccountName'))]",
+    "blobPublicDNSZoneForwarder": "[concat('.blob.', environment().suffixes.storage)]",
+    "blobPrivateDnsZoneName": "[concat('privatelink', variables('blobPublicDNSZoneForwarder'))]",
+    "blobPrivateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('blobPrivateDnsZoneName'))]",
+    "blobStorageAccountPrivateEndpointId": "[resourceId('Microsoft.Network/privateEndpoints', variables('blobStorageAccountPrivateEndpointName'))]",
+    "blobStorageAccountPrivateEndpointGroupName": "blob",
+    "blobPrivateDnsZoneGroup": "[concat(variables('blobStorageAccountPrivateEndpointName'),'/', variables('blobStorageAccountPrivateEndpointGroupName'), 'PrivateDnsZoneGroup')]",
+    "dsRoleAssignmentId": "[guid(resourceGroup().id, variables('dsRoleDefinitionId'), resourceId('Microsoft.ManagedIdentity/identities', variables('dsIdentityName')))]",
+    "dsRoleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+    "aksRoleAssignmentId": "[guid(resourceGroup().id, variables('aksRoleDefinitionId'), resourceId('Microsoft.ManagedIdentity/identities', 'aks'))]",
+    "aksRoleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4d97b98b-1d4f-4787-a291-c67834d212e7')]",
+    "agicRoleAssignmentId": "[guid(resourceGroup().id, variables('aksRoleDefinitionId'), resourceId('Microsoft.ManagedIdentity/identities', 'agic'))]",
+    "agicRoleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4d97b98b-1d4f-4787-a291-c67834d212e7')]",
+    "dsIdentityName": "dsId",
+    "minioMaxPods": 20,
+    "splunkMaxPods": 20,
+    "splunkDeploymentYaml": "[concat(parameters('_artifactsLocation'), 'scripts/splunk.yaml')]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "name": "[variables('vnetName')]",
+      "apiVersion": "2020-05-01",
+      "location": "[parameters('location')]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": "[parameters('virtualNetworkAddressPrefix')]"
+        },
+        "subnets": [
+          {
+            "name": "default",
+            "properties": {
+              "addressPrefix": "[parameters('aksSubnetAddressPrefix')]",
+              "serviceEndpoints": [
+                {
+                  "service": "Microsoft.Storage"
+                }
+              ],
+              "privateEndpointNetworkPolicies": "Disabled",
+              "privateLinkServiceNetworkPolicies": "Enabled"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "[variables('blobStorageAccountName')]",
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2019-06-01",
+      "tags": {
+        "displayName": "[variables('blobStorageAccountName')]"
+      },
+      "location": "[parameters('location')]",
+      "kind": "StorageV2",
+      "sku": {
+        "name": "Standard_LRS",
+        "tier": "Standard"
+      },
+      "properties": {
+        "networkAcls": {
+          "bypass": "AzureServices",
+          "defaultAction": "Deny"
+        }
+      },
+      "resources": [
+        {
+          "type": "blobServices/containers",
+          "apiVersion": "2019-06-01",
+          "name": "default/smartstore",
+          "dependsOn": [
+            "[resourceId('Microsoft.Storage/storageAccounts', variables('blobStorageAccountName'))]"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Microsoft.Network/privateDnsZones",
+      "apiVersion": "2018-09-01",
+      "name": "[variables('blobPrivateDnsZoneName')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks/', variables('vnetName'))]"
+      ],
+      "location": "global",
+      "properties": {},
+      "resources": [
+        {
+          "name": "vnet-link",
+          "type": "virtualNetworkLinks",
+          "apiVersion": "2018-09-01",
+          "location": "global",
+          "dependsOn": [
+            "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]",
+            "[resourceId('Microsoft.Network/privateDnsZones', variables('blobPrivateDnsZoneName'))]"
+          ],
+          "properties": {
+            "virtualNetwork": {
+              "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+            },
+            "registrationEnabled": false
+          }
+        }
+      ]
+    },
+    {
+      "type": "Microsoft.Network/privateEndpoints",
+      "apiVersion": "2020-04-01",
+      "name": "[variables('blobStorageAccountPrivateEndpointName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts',variables('blobStorageAccountName'))]"
+      ],
+      "properties": {
+        "privateLinkServiceConnections": [
+          {
+            "name": "[variables('blobStorageAccountPrivateEndpointName')]",
+            "properties": {
+              "privateLinkServiceId": "[variables('blobStorageAccountId')]",
+              "groupIds": [
+                "[variables('blobStorageAccountPrivateEndpointGroupName')]"
+              ]
+            }
+          }
+        ],
+        "subnet": {
+          "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), 'default')]"
+        },
+        "customDnsConfigs": [
+          {
+            "fqdn": "[concat(variables('blobStorageAccountName'), variables('blobPublicDNSZoneForwarder'))]"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+      "apiVersion": "2020-03-01",
+      "name": "[variables('blobPrivateDnsZoneGroup')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[variables('blobPrivateDnsZoneId')]",
+        "[variables('blobStorageAccountPrivateEndpointId')]"
+      ],
+      "properties": {
+        "privateDnsZoneConfigs": [
+          {
+            "name": "dnsConfig",
+            "properties": {
+              "privateDnsZoneId": "[variables('blobPrivateDnsZoneId')]"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "name": "[variables('dsIdentityName')]",
+      "apiVersion": "2018-11-30",
+      "location": "[parameters('location')]"
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2018-09-01-preview",
+      "name": "[variables('dsRoleAssignmentId')]",
+      "properties": {
+        "roleDefinitionId": "[variables('dsRoleDefinitionId')]",
+        "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('dsIdentityName')), '2018-11-30').principalId]",
+        "scope": "[resourceGroup().id]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2018-09-01-preview",
+      "name": "[variables('aksRoleAssignmentId')]",
+      "properties": {
+        "roleDefinitionId": "[variables('aksRoleDefinitionId')]",
+        "principalId": "[reference(resourceId('Microsoft.ContainerService/managedClusters', variables('clusterName')), '2020-11-01', 'Full').identity.principalId]",
+        "scope": "[resourceGroup().id]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2018-09-01-preview",
+      "name": "[variables('agicRoleAssignmentId')]",
+      "properties": {
+        "roleDefinitionId": "[variables('agicRoleDefinitionId')]",
+        "principalId": "[reference(resourceId('Microsoft.ContainerService/managedClusters', variables('clusterName')), '2020-11-01', 'Full').properties.addonProfiles.ingressApplicationGateway.identity.objectId]",
+        "scope": "[resourceGroup().id]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deploymentScripts",
+      "name": "minio",
+      "apiVersion": "2019-10-01-preview",
+      "location": "[parameters('location')]",
+      "kind": "AzureCLI",
+      "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('dsIdentityName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('blobStorageAccountName'))]",
+        "[resourceId('Microsoft.ContainerService/managedClusters', variables('clusterName'))]"
+      ],
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[resourceID('Microsoft.ManagedIdentity/userAssignedIdentities', 'dsId')]": {}
+        }
+      },
+      "properties": {
+        "forceUpdateTag": "[parameters('utcValue')]",
+        "AzCliVersion": "2.10.1",
+        "timeout": "PT60M",
+        "environmentVariables": [
+          {
+            "name": "RESOURCEGROUP",
+            "secureValue": "[resourceGroup().name]"
+          },
+          {
+            "name": "STORAGEACCOUNTNAME",
+            "value": "[variables('blobStorageAccountName')]"
+          },
+          {
+            "name": "STORAGEACCOUNTKEY",
+            "secureValue": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('blobStorageAccountName')), '2019-06-01').keys[0].value]"
+          },
+          {
+            "name": "HELMVALUES",
+            "value": "[variables('helmValuesUri')]"
+          },
+          {
+            "name": "CLUSTERNAME",
+            "value": "[variables('clusterName')]"
+          }
+        ],
+        "primaryScriptUri": "[variables('minioInstallScriptUri')]",
+        "cleanupPreference": "OnSuccess",
+        "retentionInterval": "P1D"
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deploymentScripts",
+      "name": "splunk",
+      "apiVersion": "2019-10-01-preview",
+      "location": "[parameters('location')]",
+      "kind": "AzureCLI",
+      "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('dsIdentityName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('blobStorageAccountName'))]",
+        "[resourceId('Microsoft.ContainerService/managedClusters', variables('clusterName'))]",
+        "[resourceId('Microsoft.Resources/deploymentScripts', 'minio')]"
+      ],
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[resourceID('Microsoft.ManagedIdentity/userAssignedIdentities', 'dsId')]": {}
+        }
+      },
+      "properties": {
+        "forceUpdateTag": "[parameters('utcValue')]",
+        "AzCliVersion": "2.10.1",
+        "timeout": "PT60M",
+        "environmentVariables": [
+          {
+            "name": "RESOURCEGROUP",
+            "secureValue": "[resourceGroup().name]"
+          },
+          {
+            "name": "STORAGEACCOUNTNAME",
+            "value": "[variables('blobStorageAccountName')]"
+          },
+          {
+            "name": "STORAGEACCOUNTKEY",
+            "secureValue": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('blobStorageAccountName')), '2019-06-01').keys[0].value]"
+          },
+          {
+            "name": "CLUSTERNAME",
+            "value": "[variables('clusterName')]"
+          },
+          {
+            "name": "LICENSEFILE",
+            "secureValue": "[parameters('licenseFile')]"
+          },
+          {
+            "name": "SPLUNKOPERATORURL",
+            "value": "[parameters('splunkOperatorUrl')]"
+          },
+          {
+            "name": "SPLUNKDEPLOYMENTYAML",
+            "value": "[variables('splunkDeploymentYaml')]"
+          },
+          {
+            "name": "REGION",
+            "value": "[parameters('location')]"
+          }
+        ],
+        "primaryScriptUri": "[variables('splunkInstallScriptUri')]",
+        "cleanupPreference": "OnSuccess",
+        "retentionInterval": "P1D"
+      }
+    },
+    {
+      "name": "[variables('clusterName')]",
+      "type": "Microsoft.ContainerService/managedClusters",
+      "apiVersion": "2020-11-01",
+      "location": "[parameters('location')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+      ],
+      "properties": {
+        "dnsPrefix": "[concat('minio', variables('resgpguid'))]",
+        "networkProfile": {
+          "networkPlugin": "azure",
+          "loadBalancerSku": "standard",
+          "serviceCidr": "172.16.0.0/24",
+          "dnsServiceIP": "172.16.0.10"
+        },
+        "agentPoolProfiles": [
+          {
+            "name": "system",
+            "count": 3,
+            "vmSize": "Standard_D4s_v3",
+            "osType": "Linux",
+            "osDiskSizeGB": 80,
+            "mode": "System",
+            "type": "VirtualMachineScaleSets",
+            "availabilityZones": [ "1", "2", "3" ],
+            "vnetSubnetID": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), 'default')]",
+            "nodeTaints": [
+              "CriticalAddonsOnly=true:NoSchedule"
+            ]
+          },
+          {
+            "name": "minio",
+            "count": "[parameters('minioNodecount')]",
+            "vmSize": "[parameters('minioVmSku')]",
+            "osType": "Linux",
+            "osDiskType": "Ephemeral",
+            "maxPods": "[variables('minioMaxpods')]",
+            "scaleSetPriority": "Regular",
+            "mode": "User",
+            "type": "VirtualMachineScaleSets",
+            "enableAutoScaling": true,
+            "minCount": "[parameters('minioMinCount')]",
+            "maxCount": "[parameters('minioMaxCount')]",
+            "availabilityZones": [ "1", "2", "3" ],
+            "vnetSubnetID": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), 'default')]"
+          },
+          {
+            "name": "splunk",
+            "count": "[parameters('splunkNodecount')]",
+            "vmSize": "[parameters('splunkVmSku')]",
+            "osType": "Linux",
+            "osDiskType": "Ephemeral",
+            "maxPods": "[variables('splunkMaxpods')]",
+            "scaleSetPriority": "Regular",
+            "mode": "User",
+            "type": "VirtualMachineScaleSets",
+            "enableAutoScaling": true,
+            "minCount": "[parameters('splunkMinCount')]",
+            "maxCount": "[parameters('splunkMaxCount')]",
+            "availabilityZones": [ "1", "2", "3" ],
+            "vnetSubnetID": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), 'default')]",
+            "linuxOSConfig": {
+              "transparentHugePageDefrag": "never",
+              "transparentHugePageEnabled": "never"
+            }
+          }
+        ],
+        "addonProfiles": {
+          "ingressApplicationGateway": {
+            "enabled": true,
+            "config": {
+              "applicationGatewayName": "splunk",
+              "subnetCIDR": "[parameters('appGwSubnetAddressPrefix')]"
+            }
+          }
+        },
+        "linuxProfile": {
+          "adminUsername": "[parameters('adminUsername')]",
+          "ssh": {
+            "publicKeys": [
+              {
+                "keyData": "[parameters('linuxSSHKey')]"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+  }
+}

@@ -1,14 +1,16 @@
-# Project
+# Splunk Enterprise on Azure Kubernetes Service
 
-> This repo has been populated by an initial template to help get you started. Please
-> make sure to update the content to build a great experience for community-building.
+This repo contains automation for deploying the Splunk Enterprise Operator for Kubernetes on AKS. This includes:
+- The deployment of a virtual network for the AKS cluster
+- The deployment of a storage account and container
+- The deployment of a private DNS zone
+- The deployment of a private storage endpoint in the cluster virtual network
+- The deployment of an AKS cluster across 3 Availability Zones
+- The deployment of the Splunk Operator for Kubernetes (with multi-site Indexer cluster) via Deployment Script
+- The deployment and configuration of the open source tool min.io to enable Splunk's SmartStore feature with Azure blob storage via Deployment Script
+- The deployment of App Gateway & Ingress Controller for access to Splunk UI
 
-As the maintainer of this project, please make a few updates:
-
-- Improving this README.MD file to provide a great experience
-- Updating SUPPORT.MD with content about this project's support experience
-- Understanding the security reporting process in SECURITY.MD
-- Remove this section from the README
+> This repo is still in development, if you do find a bug or require an additional feature please do raise an issue or contribute by creating a pull request!
 
 ## Contributing
 
