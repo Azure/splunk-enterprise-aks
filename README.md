@@ -9,6 +9,7 @@ This repo contains automation for deploying the Splunk Enterprise Operator for K
 - The deployment of the Splunk Operator for Kubernetes (with multi-site Indexer cluster) via Deployment Script
 - The deployment and configuration of the open source tool min.io to enable Splunk's SmartStore feature with Azure blob storage via Deployment Script
 - The deployment of App Gateway & Ingress Controller for access to Splunk UI
+- Disabling Transparent Huge Pages in line with Splunk best practices, using the AKS Custom Node Configuration feature
 
 > This repo is still in development, if you do find a bug or require an additional feature please do raise an issue or contribute by creating a pull request!
 
