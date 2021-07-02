@@ -1,6 +1,5 @@
 #!/bin/bash
 # Download and install Helm
-set -x
 wget -O helm.tgz https://get.helm.sh/helm-v3.6.2-linux-amd64.tar.gz
 tar -zxvf helm.tgz
 mv linux-amd64/helm /usr/local/bin/helm
