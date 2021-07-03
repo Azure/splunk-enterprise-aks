@@ -55,29 +55,6 @@
                 }
               },
               "visible": true
-            },
-            {
-              "name": "splunkWebCidr",
-              "type": "Microsoft.Common.TextBox",
-              "label": "Source CIDR block for Splunk UI",
-              "placeholder": "",
-              "defaultValue": "0.0.0.0/0",
-              "toolTip": "Source address range for access to Splunk web components including Monitoring Console",
-              "constraints": {
-                "required": true,
-                "regex": "^([0-9]{1,3}\\.){3}[0-9]{1,3}(\\/([0-9]|[1-2][0-9]|3[0-2]))$",
-                "validationMessage": "Source prefix must be provided in valid CIDR notation e.g. 10.0.0.0/16"
-              },
-              "visible": true
-            },
-            {
-              "name": "webPublicAccessWarning",
-              "type": "Microsoft.Common.InfoBox",
-              "visible": "[equals(steps('nwConfig').splunkWebCidr, '0.0.0.0/0')]",
-              "options": {
-                "icon": "Warning",
-                "text": "This CIDR block allows web access from all public IP addresses. We recommend you apply a more specific source prefix for additional security."
-              }
             }
           ]
         },
@@ -172,8 +149,7 @@
         "virtualNetworkAddressPrefix": "[steps('nwConfig').vnetConfig.addressPrefixes]",
         "aksSubnetAddressPrefix": "[steps('nwConfig').vnetConfig.subnets.subnet1.addressPrefix]",
         "appGwSubnetAddressPrefix": "[steps('nwConfig').vnetConfig.subnets.subnet2.addressPrefix]",
-        "licenseFile": "[steps('splunkConfig').splunkLicenseFile]",
-        "splunkWebCidr": "[steps('nwConfig').splunkWebCidr]"
+        "licenseFile": "[steps('splunkConfig').splunkLicenseFile]"
       }
     }
   }
