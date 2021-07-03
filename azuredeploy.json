@@ -92,7 +92,7 @@
         "description": "Public key for SSH authentication"
       }
     },
-    "adminUsername": {
+    "adminUserName": {
       "type": "string",
       "metadata": {
         "description": "Linux admin username for AKS cluster nodes"
