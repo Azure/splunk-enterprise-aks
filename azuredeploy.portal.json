@@ -1,0 +1,179 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/0.1.2-preview/CreateUIDefinition.MultiVm.json#",
+    "handler": "Microsoft.Azure.CreateUIDef",
+    "version": "0.1.2-preview",
+    "parameters": {
+      "basics": [{}],
+      "steps": [
+        {
+          "name": "nwConfig",
+          "label": "Networking",
+          "elements": [
+            {
+              "name": "vnetConfig",
+              "type": "Microsoft.Network.VirtualNetworkCombo",
+              "label": {
+                "virtualNetwork": "Virtual network",
+                "subnets": "Subnets"
+              },
+              "toolTip": {
+                "virtualNetwork": "",
+                "subnets": ""
+              },
+              "defaultValue": {
+                "name": "splunk",
+                "addressPrefixSize": "/8"
+              },
+              "constraints": {
+                "minAddressPrefixSize": "/8"
+              },
+              "options": {
+                "hideExisting": true
+              },
+              "subnets": {
+                "subnet1": {
+                  "label": "AKS Subnet",
+                  "defaultValue": {
+                    "name": "default",
+                    "addressPrefixSize": "/16"
+                  },
+                  "constraints": {
+                    "minAddressPrefixSize": "/16",
+                    "requireContiguousAddresses": true
+                  }
+                },
+                "subnet2": {
+                  "label": "Application Gateway Subnet",
+                  "defaultValue": {
+                    "name": "ApplicationGatewaySubnet",
+                    "addressPrefixSize": "/24"
+                  },
+                  "constraints": {
+                    "minAddressPrefixSize": "/24",
+                    "requireContiguousAddresses": true
+                  }
+                }
+              },
+              "visible": true
+            },
+            {
+              "name": "splunkWebCidr",
+              "type": "Microsoft.Common.TextBox",
+              "label": "Source CIDR block for Splunk UI",
+              "placeholder": "",
+              "defaultValue": "0.0.0.0/0",
+              "toolTip": "Source address range for access to Splunk web components including Monitoring Console",
+              "constraints": {
+                "required": true,
+                "regex": "^([0-9]{1,3}\\.){3}[0-9]{1,3}(\\/([0-9]|[1-2][0-9]|3[0-2]))$",
+                "validationMessage": "Source prefix must be provided in valid CIDR notation e.g. 10.0.0.0/16"
+              },
+              "visible": true
+            },
+            {
+              "name": "webPublicAccessWarning",
+              "type": "Microsoft.Common.InfoBox",
+              "visible": "[equals(steps('nwConfig').splunkWebCidr, '0.0.0.0/0')]",
+              "options": {
+                "icon": "Warning",
+                "text": "This CIDR block allows web access from all public IP addresses. We recommend you apply a more specific source prefix for additional security."
+              }
+            }
+          ]
+        },
+        {
+          "name": "osConfig",
+          "label": "AKS VM Settings",
+          "elements": [
+            {
+              "name": "vmUserName",
+              "type": "Microsoft.Compute.UserNameTextBox",
+              "label": "User name",
+              "defaultValue": "",
+              "toolTip": "",
+              "constraints": {
+                "required": true,
+                "regex": "^[a-z0-9A-Z]{1,30}$",
+                "validationMessage": "Only alphanumeric characters are allowed, and the value must be 1-30 characters long."
+              },
+              "osPlatform": "Linux",
+              "visible": true
+            },
+            {
+              "name": "vmSSHKey",
+              "type": "Microsoft.Compute.CredentialsCombo",
+              "label": {
+                "authenticationType": "Authentication type",
+                "password": "Password",
+                "confirmPassword": "Confirm password",
+                "sshPublicKey": "SSH public key"
+              },
+              "toolTip": {
+                "authenticationType": "",
+                "password": "",
+                "sshPublicKey": ""
+              },
+              "constraints": {
+                "required": true,
+                "customPasswordRegex": "^(?=.*[A-Za-z])(?=.*\\d)[A-Za-z\\d]{12,}$",
+                "customValidationMessage": "The password must be alphanumeric, contain at least 12 characters, and have at least 1 letter and 1 number."
+              },
+              "options": {
+                "hideConfirmation": false,
+                "hidePassword": true
+              },
+              "osPlatform": "Linux",
+              "visible": true
+            }
+          ]
+        },
+        {
+          "name": "splunkConfig",
+          "label": "Splunk General",
+          "elements": [
+            {
+              "name": "splunkLicenseFile",
+              "type": "Microsoft.Common.FileUpload",
+              "label": "Splunk License File",
+              "toolTip": "",
+              "constraints": {
+                "required": true,
+                "accept": ".license,.xml"
+              },
+              "options": {
+                "multiple": false,
+                "uploadMode": "file",
+                "openMode": "binary",
+                "encoding": "UTF-8"
+              },
+              "visible": true
+            }
+          ]
+        },
+        {
+          "name": "tags",
+          "label": "Tags",
+          "elements": [
+            {
+              "name": "tagsByResource",
+              "type": "Microsoft.Common.TagsByResource",
+              "resources": [
+                "Microsoft.Storage/storageAccounts",
+                "Microsoft.Compute/virtualMachines"
+              ]
+            }
+          ]
+        }
+      ],
+      "outputs": {
+        "linuxUserName": "[steps('osConfig').vmUserName]",
+        "linuxSSHKey": "[steps('osConfig').vmSSHKey.sshPublicKey]",
+        "location": "[location()]",
+        "virtualNetworkAddressPrefix": "[steps('nwConfig').vnetConfig.addressPrefixes]",
+        "aksSubnetAddressPrefix": "[steps('nwConfig').vnetConfig.subnets.subnet1.addressPrefix]",
+        "appGwSubnetAddressPrefix": "[steps('nwConfig').vnetConfig.subnets.subnet2.addressPrefix]",
+        "licenseFile": "[steps('splunkConfig').splunkLicenseFile]",
+        "splunkWebCidr": "[steps('nwConfig').splunkWebCidr]"
+      }
+    }
+  }

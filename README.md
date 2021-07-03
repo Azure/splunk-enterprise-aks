@@ -13,7 +13,7 @@ This repo contains automation for deploying the Splunk Enterprise Operator for K
 
 > This repo is still in development, if you do find a bug or require an additional feature please do raise an issue or contribute by creating a pull request!
 
-<a href="https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure%2Fsplunk-enterprise-aks%2Fmain%2Fazuredeploy.json" target="_blank">
+<a href="https://portal.azure.com/#blade/Microsoft_Azure_CreateUIDef/CustomDeploymentBlade/uri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure%2Fsplunk-enterprise-aks%2Fuidefinition%2Fazuredeploy.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure%2Fsplunk-enterprise-aks%2Fuidefinition%2Fazuredeploy.portal.json" target="_blank">
 <img src="https://aka.ms/deploytoazurebutton"/>
 </a>
 
